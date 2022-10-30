@@ -2,7 +2,7 @@
 <html lang="en-US">
 <head>
     <meta charset="utf-8">
-    <title>Simple Sin Wave Demo</title>
+    <title>More Complex Sin Wave Demo</title>
     <link rel="stylesheet" href="demos.css">
 </head>
 <body class="loopatron-page__body">
@@ -15,8 +15,8 @@
     <div class="loopatron-renderer">
         <canvas class="loopatron-renderer__output loopatron-renderer__output__canvas"
                 id="canvas-sine-wave-demo"
-                width="800"
-                height="400"></canvas>
+                height="1080`"
+                width="1920"></canvas>
     </div>
 </div>
 
@@ -50,15 +50,27 @@
              */
             (syncStep, value, target) => {
 
-                let color = 'black';
+                // rotate colors based on syncStep
+                const color = `hsl(${syncStep % 360}, 50%, 50%)`;
+                // find complementary color using hsl math
+                const complementaryColor = `hsl(${(syncStep + 180) % 360}, 50%, 50%)`;
+                // find another complementary color using hsl math
+                const complementaryColor2 = `hsl(${(syncStep + 90) % 360}, 50%, 50%)`;
 
                 // scale syncstep to the width of the canvas
-                const baseX = valueFunctions.ramp(syncStep);
+                const baseX = syncStep % GEN_MAX;
                 const x = valueHelpers.scaleValue(baseX, [0, target.width]);
-                canvasRenderFunctions.renderXYAxes(target);
+                canvasRenderFunctions.renderXYAxes(target, {
+                    strokeStyle: color,
+                    x: baseX,
+                    y: value,
+                    lineWidth: 1,
+                    dashes: false,
+                });
+                const radius = valueHelpers.scaleValue(value, [1, 30]);
                 canvasRenderFunctions.renderCircle(target, value, {
                     x: x,
-                    radius: 10,
+                    radius: radius,
                     fillStyle: color,
                     strokeStyle: color
                 });
@@ -72,8 +84,16 @@
         ),
     ];
 
-    let arrangement = new LoopatronArrangement(demoRenderers, 60);
+    let arrangement = new LoopatronArrangement(demoRenderers);
     arrangement.addControls(document.getElementById('loopatron-arrangement-controls'));
+
+    // auto-toggle clear canvas on/off
+    setInterval(() => {
+        this.clearBeforeEveryFrame = !this.clearBeforeEveryFrame;
+        console.log(`clearBeforeEveryFrame: ${this.clearBeforeEveryFrame}`);
+    }, arrangement.fps * 60);
+
+
     arrangement.play();
 
 </script>

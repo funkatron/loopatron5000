@@ -4,61 +4,18 @@
     <title>Loopatron Demos/Tests: Kitchen Sink Canvas Demo</title>
     <link rel="stylesheet" href="demos.css">
 </head>
-<body>
+<body class="loopatron-page__body">
 
 <!-- @TODO make this a webcomponent to share between demos -->
 <div id="loopatron-arrangement-controls">
-    <!-- the current syncstep value -->
-    <div id="sync-step">
-    </div>
-
-    <!-- an svg arrow to step backwards -->
-    <div id="step-backward">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- and svg square to stop -->
-    <div id="stop">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h12v12H6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg pause button -->
-    <div id="pause">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg play button -->
-    <div id="play">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg arrow to skip forward -->
-    <div id="step-forward">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
 </div>
 
 <div class="loopatron-grid">
     <div class="loopatron-renderer">
         <canvas class="loopatron-renderer__output loopatron-renderer__output__canvas"
                 id="canvas2"
-                height="512"
-                width="1024"></canvas>
+                height="1080"
+                width="1920"></canvas>
     </div>
 </div>
 

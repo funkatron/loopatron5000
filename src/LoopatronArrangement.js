@@ -2,6 +2,7 @@ import {DEFAULT_FPS, LOOPATRON_DEBUG} from "./consts.js";
 import canvasOutputFunctions from "./canvas/canvasRenderFunctions.js";
 import {LoopatronRenderer} from "./LoopatronRenderer.js";
 import {valueFunctions} from "./valueFunctions.js";
+import valueHelpers from "./valueHelpers.js";
 
 /**
  * @typedef {Object} LoopatronArrangement
@@ -24,9 +25,12 @@ import {valueFunctions} from "./valueFunctions.js";
  * A LoopatronArrangement is a collection of LoopatronRenderers (right now).
  * @param {Array[LoopatronRenderer]} renderers
  * @param {Number} fps defaults to DEFAULT_FPS (60)
+ * @param {number?} bpm this will override FPS if given. If not given, bpm will be calculated from fps
  * @returns {LoopatronArrangement} a LoopatronArrangement
  */
-let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
+let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = null) {
+
+    bpm = bpm || fps * 4;
 
     return {
         /**
@@ -37,10 +41,38 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
          * @type {boolean} defaults to true. If true, the arrangement will clear every renderTarget before rendering
          */
         clearBeforeEveryFrame: true,
+
+        settings: {
+            fps: fps,
+            bpm: bpm,
+        },
+
+        state: {
+            get playing() {
+                return this.isPlaying;
+            },
+            lastFrameTime: null,
+            lastFrameTimeDelta: null,
+            lastFrameTimeDeltaAverage: null,
+        },
+
         /**
          * @type {Number} default to 60
          */
-        fps: fps,
+        get fps() {
+            return this.settings.fps;
+        },
+        set fps(val) {
+            this.settings.fps = val;
+        },
+
+        get bpm() {
+            return this.settings.bpm;
+        },
+        set bpm(val) {
+            this.settings.bpm = val;
+        },
+
         /**
          * @type {Array[LoopatronRenderer]}
          */
@@ -75,68 +107,62 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
 
                 // clear outputs
                 if (!!this.clearBeforeEveryFrame) {
-                    let clearPromises = this.renderers.map(r => {
-                        if (r.renderTarget instanceof HTMLCanvasElement) {
-                            // if this is an HTMLCanvasElement, clear it
-                            return canvasOutputFunctions.clearCanvas(r.renderTarget);
-                        } else if (r.renderTarget instanceof HTMLElement) {
-                            // if this is an HTMLElement, clear it
-                            return r.renderTarget.innerHTML = "";
-                        } else {
-                            // otherwise, do nothing
-                            console.log(`LoopatronArrangement.play: no clear function for this renderTarget type (${r.renderTarget.constructor.name})`);
-                            return Promise.resolve();
-                        }
-                    });
-                    await Promise.all(clearPromises);
+                    await this.clearAllRenderTargets();
                 }
 
-                // render
-                let renderPromises = this.renderers.map(r => {
-                    // log the render function name
-                    return r.render(this.syncStep);
-                });
-                await Promise.all(renderPromises);
+                // run all renderers
+                await this.renderAllTargets();
+
                 this.syncStep++;
 
-            }, 1000 / this.fps);
+            }, 1000 / this.settings.fps);
         },
 
-        pause: function () {
+        pause: async function () {
             clearInterval(this._mainLoopInterval);
             this.isPlaying = false;
         },
 
-        resume: function () {
+        resume: async function () {
             if (!this.isPlaying) {
                 this.play(this.syncStep);
             }
         },
 
-        stepForward: function () {
+        stepForward: async function () {
             if (this.isPlaying) {
                 this.pause();
             }
 
-            this.renderers.map(r => {
+            if (!!this.clearBeforeEveryFrame) {
+                await this.clearAllRenderTargets();
+            }
+
+            this.renderers.forEach(r => {
                 r.render(this.syncStep);
             });
             this.syncStep++;
         },
 
-        stepBackward: function () {
-            if (this.syncStep > 0) {
-                this.syncStep--;
-                this.renderers.map(r => {
-                    r.render(this.syncStep);
-                });
+        stepBackward: async function () {
+            if (this.syncStep <= 0) {
+                return;
             }
+
+            if (!!this.clearBeforeEveryFrame) {
+                await this.clearAllRenderTargets();
+            }
+
+            this.renderers.map(r => {
+                r.render(this.syncStep);
+            });
+            this.syncStep--;
         },
 
-        stop: function () {
+        stop: async function () {
             clearInterval(this._mainLoopInterval);
             this.syncStep = 1;
-            this.stepBackward();
+            await this.stepBackward();
             this.isPlaying = false;
         },
 
@@ -146,54 +172,61 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
          */
         addControls: function (controlsRootElement) {
             controlsRootElement.innerHTML = `
-    <!-- the current syncstep value -->
-    <div id="sync-step">
-    </div>
-
-    <!-- an svg arrow to step backwards -->
-    <div id="step-backward">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- and svg square to stop -->
-    <div id="stop">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h12v12H6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg pause button -->
-    <div id="pause">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg play button -->
-    <div id="play">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
-
-    <!-- an svg arrow to skip forward -->
-    <div id="step-forward">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            <path d="M0 0h24v24H0z" fill="none"/>
-        </svg>
-    </div>
+    <div class="loopatron-controls__container">
+        <!-- the current syncstep value -->
+        <div id="loopatron-controls__debug-ascii-spinner" class="loopatron-controls__text-debug"></div>
+        <div id="loopatron-controls__debug-sync-step" class="loopatron-controls__text-debug">
+        </div>
+        <div id="loopatron-controls__debug-fps" class="loopatron-controls__text-debug">
+        </div>
+        <div id="loopatron-controls__debug-bpm" class="loopatron-controls__text-debug"">
+        </div>
     
-    <!-- a chechbox to toggle clearBeforeEveryFrame -->
-    <div id="clear-before-every-frame">
+        <!-- an svg arrow to step backwards -->
+        <div id="step-backward">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                <path d="M0 0h24v24H0z" fill="none"/>
+            </svg>
+        </div>
+    
+        <!-- and svg square to stop -->
+        <div id="stop">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M6 6h12v12H6z"/>
+                <path d="M0 0h24v24H0z" fill="none"/>
+            </svg>
+        </div>
+    
+        <!-- an svg pause button -->
+        <div id="pause">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                <path d="M0 0h24v24H0z" fill="none"/>
+            </svg>
+        </div>
+    
+        <!-- an svg play button -->
+        <div id="play">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+                <path d="M0 0h24v24H0z" fill="none"/>
+            </svg>
+        </div>
+    
+        <!-- an svg arrow to skip forward -->
+        <div id="step-forward">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                <path d="M0 0h24v24H0z" fill="none"/>
+            </svg>
+        </div>
         
-        <label for="clear-before-every-frame-checkbox"><input type="checkbox" id="clear-before-every-frame-checkbox" checked> Clear before every frame</label>
+        <!-- a chechbox to toggle clearBeforeEveryFrame -->
+        <div id="clear-before-every-frame"  class="loopatron-controls__checkbox">
+            
+            <label for="clear-before-every-frame-checkbox"><input type="checkbox" id="clear-before-every-frame-checkbox" checked> Clear before every frame</label>
+        </div>
     </div>
     `;
 
@@ -242,7 +275,7 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
             // add a renderer for the syncstep HTML
             const syncStepRenderer = new LoopatronRenderer(
                 valueFunctions.ramp,
-                document.getElementById("sync-step"),
+                document.getElementById("loopatron-controls__debug-sync-step"),
                 /**
                  * @param {Number} syncStep
                  * @param {Number} v
@@ -253,7 +286,61 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS) {
                     t.innerHTML = `SS:${syncStep.toString().padStart(6, '0')}`;
                 }
             );
+
+            // add a renderer for the fps HTML
+            const fpsRenderer = new LoopatronRenderer(
+                () => this.settings.fps,
+                document.getElementById("loopatron-controls__debug-fps"),
+                (syncStep, v, t) => {
+                    t.innerHTML = `FPS:${v.toFixed(2).padStart(2, '0')}`;
+                },
+            )
+
+            const bpmRenderer = new LoopatronRenderer(
+                () => this.settings.bpm,
+                document.getElementById("loopatron-controls__debug-bpm"),
+                (syncStep, v, t) => {
+                    t.innerHTML = `BPM:${v.toFixed(2).padStart(3, '0')}`;
+                }
+            );
+
+            const asciiSpinnerRenderer = new LoopatronRenderer(
+                valueFunctions.ramp,
+                document.getElementById("loopatron-controls__debug-ascii-spinner"),
+                (syncStep, v, t) => {
+                    const spinner = ['|', '/', '-', '\\'];
+                    let idx = Math.floor(
+                        valueHelpers.scaleValue(v, [1, spinner.length * 8])
+                    ) % spinner.length;
+                    t.innerHTML = `[${spinner[idx]}]`;
+                }
+            );
             this.addRenderer(syncStepRenderer);
+            this.addRenderer(fpsRenderer);
+            this.addRenderer(bpmRenderer);
+            this.addRenderer(asciiSpinnerRenderer)
+        },
+        async clearAllRenderTargets() {
+            let clearPromises = this.renderers.map(r => {
+                if (r.renderTarget instanceof HTMLCanvasElement) {
+                    // if this is an HTMLCanvasElement, clear it
+                    return canvasOutputFunctions.clearCanvas(r.renderTarget);
+                } else if (r.renderTarget instanceof HTMLElement) {
+                    // if this is an HTMLElement, clear it
+                    return r.renderTarget.innerHTML = "";
+                } else {
+                    // otherwise, do nothing
+                    console.log(`LoopatronArrangement.play: no clear function for this renderTarget type (${r.renderTarget.constructor.name})`);
+                    return Promise.resolve();
+                }
+            });
+            return Promise.all(clearPromises);
+        },
+        async renderAllTargets() {
+            let renderPromises = this.renderers.map(r => {
+                return r.render(this.syncStep);
+            });
+            await Promise.all(renderPromises);
         }
     }
 }
