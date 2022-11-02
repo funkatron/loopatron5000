@@ -1,19 +1,20 @@
-import {DEFAULT_FPS, LOOPATRON_DEBUG} from "./consts.js";
+import {DEFAULT_BEATS_PER_BAR, DEFAULT_BPM, DEFAULT_FPS, LOOPATRON_DEBUG} from "./consts.js";
 import canvasOutputFunctions from "./canvas/canvasRenderFunctions.js";
-import {LoopatronRenderer} from "./LoopatronRenderer.js";
+import {RenderLoop} from "./RenderLoop.js";
 import {valueFunctions} from "./valueFunctions.js";
 import valueHelpers from "./valueHelpers.js";
+import {DEFAULT_STEPS_PER_BEAT} from "./consts.js";
 
 /**
  * @typedef {Object} LoopatronArrangement
  * @property {Number} syncStep
  * @property {Number} fps
- * @property {Array[LoopatronRenderer]} renderers
+ * @property {Array[RenderLoop]} renderers
  * @property {function(): void} play
  * @property {function(): void} pause
  * @property {function(): void} stop
- * @property {function(LoopatronRenderer): void} addRenderer
- * @property {function(LoopatronRenderer): void} removeRenderer
+ * @property {function(RenderLoop): void} addRenderer
+ * @property {function(RenderLoop): void} removeRenderer
  * @property {function(): void} stepForward
  * @property {function(): void} stepBackward
  * @property {function(): void} resume
@@ -23,14 +24,11 @@ import valueHelpers from "./valueHelpers.js";
 
 /**
  * A LoopatronArrangement is a collection of LoopatronRenderers (right now).
- * @param {Array[LoopatronRenderer]} renderers
- * @param {Number} fps defaults to DEFAULT_FPS (60)
- * @param {number?} bpm this will override FPS if given. If not given, bpm will be calculated from fps
+ * @param {Array[RenderLoop]} renderers
+ * @param {number} bpm
  * @returns {LoopatronArrangement} a LoopatronArrangement
  */
-let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = null) {
-
-    bpm = bpm || fps * 4;
+let LoopatronArrangement = function (renderers = [], bpm = DEFAULT_BPM) {
 
     return {
         /**
@@ -43,38 +41,27 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
         clearBeforeEveryFrame: true,
 
         settings: {
-            fps: fps,
             bpm: bpm,
         },
 
         state: {
-            get playing() {
-                return this.isPlaying;
+            fps: bpm / 60 * DEFAULT_STEPS_PER_BEAT,
+            // the time between syncSteps
+            stepInterval:  1000 / (bpm / 60 * DEFAULT_STEPS_PER_BEAT),
+            get currentBeat() {
+                return this.syncStep / DEFAULT_STEPS_PER_BEAT;
             },
-            lastFrameTime: null,
-            lastFrameTimeDelta: null,
-            lastFrameTimeDeltaAverage: null,
-        },
-
-        /**
-         * @type {Number} default to 60
-         */
-        get fps() {
-            return this.settings.fps;
-        },
-        set fps(val) {
-            this.settings.fps = val;
+            get currentBar() {
+                return this.syncStep / (DEFAULT_STEPS_PER_BEAT * DEFAULT_BEATS_PER_BAR);
+            }
         },
 
         get bpm() {
             return this.settings.bpm;
         },
-        set bpm(val) {
-            this.settings.bpm = val;
-        },
 
         /**
-         * @type {Array[LoopatronRenderer]}
+         * @type {Array[RenderLoop]}
          */
         renderers: renderers,
 
@@ -84,7 +71,7 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
 
         /**
          * @returns {void}
-         * @param {LoopatronRenderer} renderer
+         * @param {RenderLoop} renderer
          */
         addRenderer: function (renderer) {
             this.renderers.push(renderer)
@@ -92,10 +79,28 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
 
         /**
          * @returns {void}
-         * @param {LoopatronRenderer} renderer
+         * @param {RenderLoop} renderer
          */
         removeRenderer: function (renderer) {
             this.renderers = this.renderers.filter(r => r !== renderer)
+        },
+
+        renderCurrentFrame: async function() {
+            // console.log(`Rendering frame ${this.syncStep} at
+            // ${this.bpm} bpm
+            // ${this.state.fps} fps
+            // ${this.state.stepInterval} ms per step
+            // ${this.state.currentBeat} current beat
+            // ${this.state.currentBar} current bar
+            // `);
+
+            // clear outputs
+            if (!!this.clearBeforeEveryFrame) {
+                await this.clearAllRenderTargets();
+            }
+
+            // run all renderers
+            await this.renderAllTargets();
         },
 
         play: function (syncStep = 0) {
@@ -105,17 +110,11 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
 
             this._mainLoopInterval = setInterval(async () => {
 
-                // clear outputs
-                if (!!this.clearBeforeEveryFrame) {
-                    await this.clearAllRenderTargets();
-                }
-
-                // run all renderers
-                await this.renderAllTargets();
+                await this.renderCurrentFrame();
 
                 this.syncStep++;
 
-            }, 1000 / this.settings.fps);
+            }, this.state.stepInterval);
         },
 
         pause: async function () {
@@ -133,36 +132,25 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
             if (this.isPlaying) {
                 this.pause();
             }
-
-            if (!!this.clearBeforeEveryFrame) {
-                await this.clearAllRenderTargets();
-            }
-
-            this.renderers.forEach(r => {
-                r.render(this.syncStep);
-            });
             this.syncStep++;
+
+            await this.renderCurrentFrame();
         },
 
         stepBackward: async function () {
-            if (this.syncStep <= 0) {
-                return;
+            if (this.syncStep < 0) {
+                this.syncStep = 0;
             }
 
-            if (!!this.clearBeforeEveryFrame) {
-                await this.clearAllRenderTargets();
-            }
-
-            this.renderers.map(r => {
-                r.render(this.syncStep);
-            });
             this.syncStep--;
+
+            await this.renderCurrentFrame();
         },
 
         stop: async function () {
             clearInterval(this._mainLoopInterval);
-            this.syncStep = 1;
-            await this.stepBackward();
+            this.syncStep = 0;
+            await this.renderCurrentFrame();
             this.isPlaying = false;
         },
 
@@ -273,46 +261,54 @@ let LoopatronArrangement = function (renderers = [], fps = DEFAULT_FPS, bpm = nu
             });
 
             // add a renderer for the syncstep HTML
-            const syncStepRenderer = new LoopatronRenderer(
-                valueFunctions.ramp,
-                document.getElementById("loopatron-controls__debug-sync-step"),
-                /**
-                 * @param {Number} syncStep
-                 * @param {Number} v
-                 * @param {HTMLElement} t
-                 */
-                (syncStep, v, t) => {
-                    // pad syncstep with 6 leading zeroes
-                    t.innerHTML = `SS:${syncStep.toString().padStart(6, '0')}`;
+            const syncStepRenderer = new RenderLoop(
+                {
+                    valueFunction: valueFunctions.ramp,
+                    renderTarget: document.getElementById("loopatron-controls__debug-sync-step"),
+                    renderFunction: /**
+                     * @param {Number} syncStep
+                     * @param {Number} v
+                     * @param {HTMLElement} t
+                     */
+                        (syncStep, v, t) => {
+                        // pad syncstep with 6 leading zeroes
+                        t.innerHTML = `SS:${syncStep.toString().padStart(6, '0')}`;
+                    }
                 }
             );
 
             // add a renderer for the fps HTML
-            const fpsRenderer = new LoopatronRenderer(
-                () => this.settings.fps,
-                document.getElementById("loopatron-controls__debug-fps"),
-                (syncStep, v, t) => {
-                    t.innerHTML = `FPS:${v.toFixed(2).padStart(2, '0')}`;
+            const fpsRenderer = new RenderLoop(
+                {
+                    valueFunction: () => this.state.fps,
+                    renderTarget: document.getElementById("loopatron-controls__debug-fps"),
+                    renderFunction: (syncStep, v, t) => {
+                        t.innerHTML = `FPS:${v.toFixed(2).padStart(2, '0')}`;
+                    }
                 },
             )
 
-            const bpmRenderer = new LoopatronRenderer(
-                () => this.settings.bpm,
-                document.getElementById("loopatron-controls__debug-bpm"),
-                (syncStep, v, t) => {
-                    t.innerHTML = `BPM:${v.toFixed(2).padStart(3, '0')}`;
+            const bpmRenderer = new RenderLoop(
+                {
+                    valueFunction: () => this.bpm,
+                    renderTarget: document.getElementById("loopatron-controls__debug-bpm"),
+                    renderFunction: (syncStep, v, t) => {
+                        t.innerHTML = `BPM:${v.toFixed(2).padStart(3, '0')}`;
+                    }
                 }
             );
 
-            const asciiSpinnerRenderer = new LoopatronRenderer(
-                valueFunctions.ramp,
-                document.getElementById("loopatron-controls__debug-ascii-spinner"),
-                (syncStep, v, t) => {
-                    const spinner = ['|', '/', '-', '\\'];
-                    let idx = Math.floor(
-                        valueHelpers.scaleValue(v, [1, spinner.length * 8])
-                    ) % spinner.length;
-                    t.innerHTML = `[${spinner[idx]}]`;
+            const asciiSpinnerRenderer = new RenderLoop(
+                {
+                    valueFunction: valueFunctions.ramp,
+                    renderTarget: document.getElementById("loopatron-controls__debug-ascii-spinner"),
+                    renderFunction: (syncStep, v, t) => {
+                        const spinner = ['|', '/', '-', '\\'];
+                        let idx = Math.floor(
+                            valueHelpers.scaleValue(v, [1, spinner.length * 8])
+                        ) % spinner.length;
+                        t.innerHTML = `[${spinner[idx]}]`;
+                    }
                 }
             );
             this.addRenderer(syncStepRenderer);

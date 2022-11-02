@@ -1,31 +1,44 @@
 import valueHelpers from "./valueHelpers.js";
-import {DEFAULT_STEP_INCREMENT, DEFAULT_STEP_INCREMENT_SINE, GEN_MAX, GEN_MIN} from "./consts.js";
+import {
+    DEFAULT_BARS_PER_LOOP,
+    DEFAULT_STEP_INCREMENT,
+    DEFAULT_STEP_INCREMENT_SINE,
+    DEFAULT_STEPS_PER_BAR,
+    GEN_MAX,
+    GEN_MIN
+} from "./consts.js";
 
 export const valueFunctions = {
-    ramp(syncStep = 0, options = {minVal:GEN_MIN, maxVal:GEN_MAX, stepIncrement:DEFAULT_STEP_INCREMENT}) {
-        let val = (syncStep * options.stepIncrement) + options.minVal;
-        console.log("ramp val: ", val);
-        if (val > options.maxVal) {  // start over at the minVal if we exceed the maxVal
-            val = options.minVal;
+    ramp(syncStep = 0, minVal = GEN_MIN, maxVal = GEN_MAX, offset = 0, rendererSettings = {lengthBars:DEFAULT_BARS_PER_LOOP, stepsPerBar:DEFAULT_STEPS_PER_BAR, stepIncrement:DEFAULT_STEP_INCREMENT}) {
 
-            // val = val - syncStep;
-            // console.log("ramp val 2: ", val, syncStep);
-        }
-        return val;
+        let {lengthBars, stepsPerBar, stepIncrement} = rendererSettings;
+        let stepsPerLoop = stepsPerBar * lengthBars;
+        let step = syncStep % stepsPerLoop + offset;
+        let value = valueHelpers.scaleValue(step, [minVal, maxVal], [0, stepsPerLoop]);
+        return value
     },
 
     /**
      *
      * a generator function that returns a pattern of sign wave values
      * @param {Number} syncStep the current sync step
-     * @param options
-     * @param {Number} options.minVal the minimum value to return
-     * @param {Number} options.maxVal the maximum value to return
-     * @param {Number} options.stepIncrement the amount to increment the value by each step
+     * @param {Number} minVal the minimum value to return
+     * @param {Number} maxVal the maximum value to return
+     * @param offset
+     * @param rendererSettings
      */
-    sine: function (syncStep = 0, options = {minVal:GEN_MIN, maxVal:GEN_MAX, stepIncrement:DEFAULT_STEP_INCREMENT_SINE}) {
-        let val = Math.sin(syncStep * options.stepIncrement);
-        // scale the possible sine values (-1 to 1) to the range of minVal to maxVal
-        return valueHelpers.scaleValue(val, [options.minVal, options.maxVal], [-1, 1]);
+    sine: function (syncStep = 0, minVal = GEN_MIN, maxVal = GEN_MAX, offset = 0, rendererSettings = {lengthBars:DEFAULT_BARS_PER_LOOP, stepsPerBar:DEFAULT_STEPS_PER_BAR, stepIncrement:DEFAULT_STEP_INCREMENT_SINE}) {
+        let {lengthBars, stepsPerBar, stepIncrement} = rendererSettings;
+        let stepsPerLoop = stepsPerBar * lengthBars;
+        let step = syncStep % stepsPerLoop;
+
+        let radiansOffset = offset * 2 * Math.PI;
+
+        let sinVal = Math.sin(step * stepIncrement * Math.PI * 2 + radiansOffset);
+
+        // calculate the value with offset
+        let value = valueHelpers.scaleValue(sinVal, [minVal, maxVal], [-1, 1]);
+
+        return value
     }
 };

@@ -361,10 +361,10 @@ export default {
 
     /**
      * @param {HTMLElement} canvas
-     * @param {Number|string} text
-     * @param {{}|{x: number, y: Number, fillStyle: string, font: string, strokeStyle: string}} options
+     * @param {string} text
+     * @param {{x: number, y: Number, fillStyle: string, font: string, strokeStyle: string}?} options
      */
-    renderText(canvas, text, options) {
+    renderText(canvas, text, options = {}) {
         let ctx = canvas.getContext('2d');
 
         let x = 5

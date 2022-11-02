@@ -15,64 +15,65 @@
     <div class="loopatron-renderer">
         <canvas class="loopatron-renderer__output loopatron-renderer__output__canvas"
                 id="canvas-sine-wave-demo"
-                width="800"
-                height="400"></canvas>
+                width="200"
+                height="200"></canvas>
     </div>
 </div>
 
 <script type="module">
     import {LoopatronArrangement} from "../src/LoopatronArrangement.js";
-    import {LoopatronRenderer} from "../src/LoopatronRenderer.js";
+    import {RenderLoop} from "../src/RenderLoop.js";
     import {valueFunctions} from "../src/valueFunctions.js";
     import canvasRenderFunctions from "../src/canvas/canvasRenderFunctions.js";
     import valueHelpers from "../src/valueHelpers.js";
-    import {GEN_MAX} from "../src/consts.js";
+    import {DEFAULT_BEATS_PER_BAR, DEFAULT_BARS_PER_LOOP, DEFAULT_STEPS_PER_BEAT} from "../src/consts.js";
+
 
     const demoRenderers = [
-        new LoopatronRenderer(
+        new RenderLoop(
             /**
              * the value function
              * @type {function(number): number}
              */
-            valueFunctions.sine,  // the value function
-            /**
-             * the render target
-             * @type {HTMLCanvasElement}
-             */
-            document.getElementById('canvas-sine-wave-demo'),
-            /**
-             * The render function. This function is called for each step in the arrangement, to "render" the current "frame".
-             *
-             * This function takes the value returned by the value function, and draws a dot on the canvas.
-             * @param {number} syncStep the current syncStep for the Arrangement. All renderers will be called with the same syncStep
-             * @param {HTMLCanvasElement} target the render target. In this case we expect a canvas element
-             * @param {number} value the value returned by the value function
-             */
-            (syncStep, value, target) => {
+            {
+                valueFunction: valueFunctions.sine,
+                renderTarget: document.getElementById('canvas-sine-wave-demo'),
+                renderFunction: /**
+                 * The render function. This function is called for each step in the arrangement, to "render" the current "frame".
+                 *
+                 * This function takes the value returned by the value function, and draws a dot on the canvas.
+                 * @param {number} syncStep the current syncStep for the Arrangement. All renderers will be called with the same syncStep
+                 * @param {HTMLCanvasElement} target the render target. In this case we expect a canvas element
+                 * @param {number} value the value returned by the value function
+                 */
+                (syncStep, value, target) => {
 
-                let color = 'black';
+                    let color = 'black';
+                    let radius = 4;
 
-                // scale syncstep to the width of the canvas
-                const baseX = valueFunctions.ramp(syncStep);
-                const x = valueHelpers.scaleValue(baseX, [0, target.width]);
-                canvasRenderFunctions.renderXYAxes(target);
-                canvasRenderFunctions.renderCircle(target, value, {
-                    x: x,
-                    radius: 10,
-                    fillStyle: color,
-                    strokeStyle: color
-                });
-                // canvasRenderFunctions.renderCircleLine(target, value, {
-                //     x: x,
-                //     radius: radius,
-                //     strokeStyle: color,
-                    // lineWidth: 1
-                // });
+                    let rotation = valueFunctions.ramp(syncStep, 0, Math.PI * 2);
+                    let axesOpts = {rotation: rotation}
+                    canvasRenderFunctions.renderXYAxes(target, axesOpts);
+
+                    let circleX = valueFunctions.ramp(syncStep, 0 - 1, target.width + 1);
+                    let circleOpts = {
+                        x: circleX,
+                        radius: radius,
+                        fillStyle: color,
+                        strokeStyle: color
+                    };
+                    canvasRenderFunctions.renderCircle(target, value, circleOpts);
+                    let debugText = `syncStep: ${syncStep} value: ${value} circleX: ${circleX}`;
+                    canvasRenderFunctions.renderText(target, debugText);
+
+                    // play a metrionote sound every 10 steps
+
+                }
             },
         ),
     ];
 
-    let arrangement = new LoopatronArrangement(demoRenderers, 60);
+    let arrangement = new LoopatronArrangement(demoRenderers);
     arrangement.addControls(document.getElementById('loopatron-arrangement-controls'));
     arrangement.play();
 
